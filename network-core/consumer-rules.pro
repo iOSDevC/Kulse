@@ -1,0 +1,4 @@
+-keep class com.iosdevc.android.logger.db.entity.** { *; }
+-keep class com.iosdevc.android.logger.Kulse { *; }
+-keep class com.iosdevc.android.logger.KulseConfig { *; }
+-keep class com.iosdevc.android.logger.KulseInterceptor { *; }

@@ -1,0 +1,43 @@
+# Built outputs
+*.iml
+.gradle
+build/
+/captures
+
+# Local config
+local.properties
+
+# IDE
+/.idea
+*.swp
+*~
+
+# Claude Code
+/.claude
+
+# Kotlin build metadata
+.kotlin
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Android
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Kotlin
+*.kotlin_module
+
+# Logs & profiling
+*.log
+*.hprof
+
+# Signing
+*.jks
+*.keystore
+signing.properties
