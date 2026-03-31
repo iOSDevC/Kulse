@@ -7,6 +7,14 @@
   Intercept, inspect, and debug HTTP traffic directly from your app.
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+  <img src="https://img.shields.io/badge/API-29%2B-brightgreen" alt="API" />
+  <img src="https://img.shields.io/badge/Kotlin-2.0-purple" alt="Kotlin" />
+  <img src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-blue" alt="Compose" />
+</p>
+
 ---
 
 ## Screenshots
@@ -37,7 +45,7 @@
 - **Request Inspector** -- view headers, bodies (with JSON pretty-print), and timing charts
 - **Sensitive Data Redaction** -- configurable header, query param, and JSON field redaction
 - **Session Management** -- logs grouped by app session with device info
-- **Export & Share** -- export logs as JSON and share via Android share sheet
+- **Export & Share** -- export logs as JSON, Plain Text, Markdown, HTML, and cURL; share via Android share sheet
 - **cURL Copy** -- generate cURL commands from any captured request
 - **Local Storage** -- Room database with automatic retention and size limits
 - **Material 3 Dark Theme** -- clean developer-tool aesthetic

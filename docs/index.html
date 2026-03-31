@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kulse — Android Network Inspector</title>
+  <meta name="description" content="Intercept, inspect, and debug HTTP traffic directly from your Android app. OkHttp interceptor with a Jetpack Compose UI." />
+
+  <!-- TODO: Google Analytics -->
+  <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-XXXXXXXXXX');
+  </script> -->
+
+  <!-- TODO: Google Search Console verification -->
+  <!-- <meta name="google-site-verification" content="XXXXXXXXXX" /> -->
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Kulse — Android Network Inspector" />
+  <meta property="og:description" content="Intercept, inspect, and debug HTTP traffic directly from your Android app." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://iOSDevC.github.io/Kulse" />
+  <meta property="og:image" content="https://iOSDevC.github.io/Kulse/kulse.png" />
+
+  <!-- Fonts: Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS
+    ============================================================ */
+    :root {
+      --bg:              #000;
+      --surface:         #0d0d0d;
+      --surface-raised:  #161616;
+      --border:          rgba(255,255,255,0.07);
+      --border-strong:   rgba(255,255,255,0.12);
+      --border-focus:    rgba(255,255,255,0.22);
+
+      --text:            #ededed;
+      --text-2:          #888;
+      --text-3:          #4a4a4a;
+
+      --accent:          #4f8ef7;
+      --accent-dim:      rgba(79, 142, 247, 0.10);
+      --green:           #3ecf8e;
+      --green-dim:       rgba(62, 207, 142, 0.12);
+
+      /* Syntax tokens — JetBrains Darcula */
+      --tk-kw:   #cf8fff;
+      --tk-fn:   #56a8f5;
+      --tk-str:  #6aab73;
+      --tk-cmt:  #606366;
+      --tk-num:  #2aacb8;
+      --tk-ty:   #ffd76d;
+
+      --radius-sm: 5px;
+      --radius:    8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+
+      --shadow:    0 4px 20px rgba(0,0,0,0.55);
+      --shadow-lg: 0 16px 48px rgba(0,0,0,0.65);
+    }
+
+    /* ============================================================
+       RESET
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    img { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    code, pre { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; }
+
+    /* ============================================================
+       LAYOUT
+    ============================================================ */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 28px;
+    }
+    .container--narrow {
+      max-width: 740px;
+      margin: 0 auto;
+      padding: 0 28px;
+    }
+
+    /* ============================================================
+       NAV
+    ============================================================ */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 200;
+      height: 58px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(18px) saturate(160%);
+      -webkit-backdrop-filter: blur(18px) saturate(160%);
+    }
+    .nav__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 100%;
+    }
+    .nav__brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-weight: 600;
+      font-size: 0.92rem;
+      letter-spacing: -0.01em;
+    }
+    .nav__logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      flex-shrink: 0;
+    }
+    .nav__logo img { width: 100%; height: 100%; object-fit: cover; }
+    .nav__links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .nav__link {
+      padding: 5px 11px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      color: var(--text-2);
+      transition: color 0.15s, background 0.15s;
+    }
+    .nav__link:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+    .nav__link--cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 10px;
+      padding: 5px 13px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .nav__link--cta:hover {
+      border-color: var(--border-focus);
+      background: rgba(255,255,255,0.04);
+    }
+
+    /* ============================================================
+       HERO
+    ============================================================ */
+    .hero-section {
+      position: relative;
+      overflow: hidden;
+    }
+    /* Subtle dot-grid background */
+    .hero-section::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.055) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(ellipse 70% 90% at 60% 0%, black 20%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 90% at 60% 0%, black 20%, transparent 75%);
+      pointer-events: none;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+      padding: 138px 0 100px;
+      position: relative;
+    }
+    .hero__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 3px 11px 3px 7px;
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      font-size: 0.73rem;
+      font-weight: 500;
+      color: var(--text-2);
+      letter-spacing: 0.01em;
+      margin-bottom: 22px;
+    }
+    .hero__eyebrow-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px 1px var(--green);
+      flex-shrink: 0;
+    }
+    .hero__title {
+      font-size: 3.1rem;
+      font-weight: 700;
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      margin-bottom: 18px;
+    }
+    .hero__title em {
+      font-style: normal;
+      color: var(--text-2);
+    }
+    .hero__subtitle {
+      font-size: 1rem;
+      color: var(--text-2);
+      line-height: 1.72;
+      margin-bottom: 28px;
+      max-width: 440px;
+    }
+    .hero__pills {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.74rem;
+      font-weight: 500;
+      color: var(--text-3);
+      letter-spacing: 0.01em;
+    }
+    .pill svg { flex-shrink: 0; }
+    .pill-divider {
+      width: 1px;
+      height: 12px;
+      background: var(--border-strong);
+    }
+    .hero__actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      font-weight: 500;
+      line-height: 1;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn--primary {
+      background: var(--text);
+      color: #000;
+    }
+    .btn--primary:hover {
+      background: #cfcfcf;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    }
+    .btn--secondary {
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border-strong);
+    }
+    .btn--secondary:hover {
+      color: var(--text);
+      border-color: var(--border-focus);
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* Hero code window */
+    .code-window {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+    .code-window + .code-window { margin-top: 14px; }
+    .code-window__bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-raised);
+    }
+    .code-window__dots {
+      display: flex;
+      gap: 6px;
+    }
+    .code-window__dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .d-red    { background: #ff5f57; }
+    .d-yellow { background: #ffbd2e; }
+    .d-green  { background: #28c840; }
+    .code-window__file {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-3);
+    }
+    .code-window__spacer { width: 60px; }
+    .code-window__body {
+      padding: 20px 22px;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.76;
+    }
+    .code-window__body code { white-space: pre; display: block; }
+
+    /* Syntax tokens */
+    .kw  { color: var(--tk-kw); }
+    .fn  { color: var(--tk-fn); }
+    .str { color: var(--tk-str); }
+    .cm  { color: var(--tk-cmt); }
+    .nm  { color: var(--tk-num); }
+    .ty  { color: var(--tk-ty); }
+
+    /* ============================================================
+       SECTION SHARED
+    ============================================================ */
+    .section { padding: 96px 0; }
+    .section--alt {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .section__tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .section__title {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+    .section__lead {
+      font-size: 0.97rem;
+      color: var(--text-2);
+      line-height: 1.68;
+      max-width: 540px;
+    }
+    .section__header { margin-bottom: 52px; }
+
+    /* ============================================================
+       FEATURES
+    ============================================================ */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--border); /* gap color */
+      gap: 1px;
+    }
+    .feature {
+      background: var(--bg);
+      padding: 26px 24px;
+      transition: background 0.15s;
+    }
+    .feature:last-child {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 24px 28px;
+    }
+    .feature:last-child .feature__body { flex: 1; }
+    .feature:hover { background: var(--surface); }
+    .feature__icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      color: var(--text-2);
+      margin-bottom: 14px;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .feature:last-child .feature__icon { margin-bottom: 0; margin-top: 2px; }
+    .feature:hover .feature__icon {
+      color: var(--accent);
+      border-color: rgba(79,142,247,0.3);
+      background: var(--accent-dim);
+    }
+    .feature__name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 5px;
+      letter-spacing: -0.01em;
+    }
+    .feature__desc {
+      font-size: 0.82rem;
+      color: var(--text-2);
+      line-height: 1.58;
+    }
+
+    /* ============================================================
+       SCREENSHOTS
+    ============================================================ */
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .screenshot {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--surface);
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    }
+    .screenshot:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+    }
+    .screenshot img { width: 100%; display: block; }
+    .screenshot__label {
+      padding: 7px 11px;
+      font-size: 0.73rem;
+      color: var(--text-3);
+      border-top: 1px solid var(--border);
+      letter-spacing: 0.01em;
+    }
+
+    /* ============================================================
+       SETUP STEPS
+    ============================================================ */
+    .steps { position: relative; }
+    .step {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 0 24px;
+      position: relative;
+    }
+    .step__aside {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 1px;
+    }
+    .step__num {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-2);
+      flex-shrink: 0;
+    }
+    .step__line {
+      flex: 1;
+      width: 1px;
+      background: var(--border-strong);
+      margin-top: 10px;
+      min-height: 28px;
+    }
+    .step__content { padding-bottom: 48px; }
+    .step__title {
+      font-size: 0.97rem;
+      font-weight: 600;
+      color: var(--text);
+      padding-top: 6px;
+      margin-bottom: 6px;
+      letter-spacing: -0.01em;
+    }
+    .step__desc {
+      font-size: 0.875rem;
+      color: var(--text-2);
+      line-height: 1.65;
+      margin-bottom: 16px;
+    }
+    .step__desc code {
+      font-size: 0.82em;
+      color: var(--text);
+      background: var(--surface-raised);
+      border: 1px solid var(--border-strong);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    /* ============================================================
+       CODE BLOCKS
+    ============================================================ */
+    .codeblock {
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .codeblock__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-raised);
+    }
+    .codeblock__lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .codeblock__body {
+      background: var(--surface);
+      padding: 18px 20px;
+      overflow-x: auto;
+      font-size: 0.81rem;
+      line-height: 1.78;
+    }
+    .codeblock__body code { white-space: pre; display: block; }
+
+    /* ============================================================
+       CONFIG
+    ============================================================ */
+    .config-card {
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .config-card__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-raised);
+    }
+    .config-card__title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text-2);
+    }
+    .config-card__body {
+      background: var(--surface);
+      padding: 20px 24px;
+      overflow-x: auto;
+      font-size: 0.81rem;
+      line-height: 1.78;
+    }
+    .config-card__body code { white-space: pre; display: block; }
+
+    /* ============================================================
+       FOOTER
+    ============================================================ */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 38px 0;
+    }
+    .footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer__copy {
+      font-size: 0.83rem;
+      color: var(--text-3);
+    }
+    .footer__copy strong { color: var(--text-2); font-weight: 500; }
+    .footer__links { display: flex; gap: 18px; }
+    .footer__link {
+      font-size: 0.8rem;
+      color: var(--text-3);
+      transition: color 0.15s;
+    }
+    .footer__link:hover { color: var(--text-2); }
+
+    /* ============================================================
+       RESPONSIVE
+    ============================================================ */
+    @media (max-width: 1024px) {
+      .hero { grid-template-columns: 1fr; gap: 48px; padding: 120px 0 80px; }
+      .hero__code-stack { order: -1; }
+      .hero__title { font-size: 2.5rem; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature:last-child { grid-column: 1 / -1; }
+      .screenshots-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .hero__title { font-size: 2rem; }
+      .section { padding: 72px 0; }
+      .section__title { font-size: 1.6rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .feature:last-child { grid-column: auto; flex-direction: column; gap: 14px; }
+      .step { grid-template-columns: 38px 1fr; gap: 0 18px; }
+      .footer__inner { flex-direction: column; gap: 16px; text-align: center; }
+      .nav__link:not(.nav__link--cta) { display: none; }
+    }
+    @media (max-width: 500px) {
+      .screenshots-grid { grid-template-columns: repeat(2, 1fr); }
+      .hero__actions { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     NAV
+============================================================ -->
+<header class="nav" role="banner">
+  <div class="container">
+    <div class="nav__inner">
+      <a href="/" class="nav__brand" aria-label="Kulse home">
+        <span class="nav__logo" aria-hidden="true">
+          <img src="kulse.png" alt="" />
+        </span>
+        Kulse
+      </a>
+      <nav class="nav__links" aria-label="Primary navigation">
+        <a href="#features"     class="nav__link">Features</a>
+        <a href="#screenshots"  class="nav__link">Screenshots</a>
+        <a href="#setup"        class="nav__link">Setup</a>
+        <a href="#config"       class="nav__link">Config</a>
+        <a href="https://github.com/iOSDevC/Kulse"
+           class="nav__link nav__link--cta"
+           target="_blank" rel="noopener noreferrer">
+          <!-- Lucide: github -->
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/>
+            <path d="M9 18c-4.51 2-5-2-7-2"/>
+          </svg>
+          GitHub
+        </a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ============================================================
+     HERO
+============================================================ -->
+<section class="hero-section" aria-labelledby="hero-heading">
+  <div class="container">
+    <div class="hero">
+
+      <!-- Left: copy -->
+      <div class="hero__copy">
+        <div class="hero__eyebrow">
+          <span class="hero__eyebrow-dot" aria-hidden="true"></span>
+          v1.0.0 — First release
+        </div>
+
+        <h1 class="hero__title" id="hero-heading">
+          Android<br/>Network<br/><em>Inspector</em>
+        </h1>
+
+        <p class="hero__subtitle">
+          Intercept, inspect, and debug HTTP traffic directly from
+          your app. OkHttp interceptor with a full Jetpack Compose
+          console — zero boilerplate.
+        </p>
+
+        <div class="hero__pills">
+          <!-- MIT pill -->
+          <span class="pill">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
+              <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
+              <path d="M7 21h10"/><path d="M12 3v18"/>
+              <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>
+            </svg>
+            MIT
+          </span>
+          <span class="pill-divider" aria-hidden="true"></span>
+          <!-- API pill -->
+          <span class="pill">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="14" height="20" x="5" y="2" rx="2"/>
+              <path d="M12 18h.01"/>
+            </svg>
+            API 29+
+          </span>
+          <span class="pill-divider" aria-hidden="true"></span>
+          <!-- Kotlin pill -->
+          <span class="pill">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+            Kotlin
+          </span>
+        </div>
+
+        <div class="hero__actions">
+          <a href="#setup" class="btn btn--primary">
+            Get started
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+            </svg>
+          </a>
+          <a href="https://github.com/iOSDevC/Kulse"
+             class="btn btn--secondary"
+             target="_blank" rel="noopener noreferrer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.75"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/>
+              <path d="M9 18c-4.51 2-5-2-7-2"/>
+            </svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+
+      <!-- Right: code windows -->
+      <div class="hero__code-stack" aria-hidden="true">
+        <div class="code-window">
+          <div class="code-window__bar">
+            <div class="code-window__dots">
+              <span class="code-window__dot d-red"></span>
+              <span class="code-window__dot d-yellow"></span>
+              <span class="code-window__dot d-green"></span>
+            </div>
+            <span class="code-window__file">Application.kt</span>
+            <span class="code-window__spacer"></span>
+          </div>
+          <div class="code-window__body">
+<code><span class="kw">class</span> <span class="ty">MyApp</span> : <span class="ty">Application</span>() {
+    <span class="kw">override fun</span> <span class="fn">onCreate</span>() {
+        <span class="kw">super</span>.<span class="fn">onCreate</span>()
+        <span class="ty">Kulse</span>.<span class="fn">install</span>(
+            context = <span class="kw">this</span>,
+            config = <span class="ty">KulseConfig</span>(
+                sensitiveHeaders = <span class="fn">setOf</span>(
+                    <span class="str">"Authorization"</span>,
+                    <span class="str">"X-Api-Key"</span>,
+                ),
+            )
+        )
+    }
+}</code>
+          </div>
+        </div>
+
+        <div class="code-window">
+          <div class="code-window__bar">
+            <div class="code-window__dots">
+              <span class="code-window__dot d-red"></span>
+              <span class="code-window__dot d-yellow"></span>
+              <span class="code-window__dot d-green"></span>
+            </div>
+            <span class="code-window__file">NetworkModule.kt</span>
+            <span class="code-window__spacer"></span>
+          </div>
+          <div class="code-window__body">
+<code><span class="kw">val</span> client = <span class="ty">OkHttpClient</span>.<span class="ty">Builder</span>()
+    .<span class="fn">addInterceptor</span>(<span class="ty">Kulse</span>.<span class="fn">interceptor</span>())
+    .<span class="fn">eventListenerFactory</span>(
+        <span class="ty">Kulse</span>.<span class="fn">eventListenerFactory</span>()
+    )
+    .<span class="fn">build</span>()</code>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FEATURES
+============================================================ -->
+<section id="features" class="section" aria-labelledby="features-heading">
+  <div class="container">
+    <div class="section__header">
+      <span class="section__tag">Capabilities</span>
+      <h2 class="section__title" id="features-heading">Everything you need to debug</h2>
+      <p class="section__lead">A complete network inspection layer. Drop it in, attach the interceptor, and every HTTP call is captured and viewable instantly.</p>
+    </div>
+
+    <div class="features-grid">
+
+      <!-- 1 · OkHttp Interceptor -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: plug-zap -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/>
+            <path d="m2 22 3-3"/><path d="M7.5 13.5 10 11"/><path d="M10.5 16.5 13 14"/>
+            <path d="m18 3-4 4h6l-4 4"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">OkHttp Interceptor</h3>
+          <p class="feature__desc">Captures every HTTP request and response automatically. No manual instrumentation required.</p>
+        </div>
+      </div>
+
+      <!-- 2 · Detailed Timing -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: timer -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="10" x2="14" y1="2" y2="2"/>
+            <line x1="12" x2="15" y1="14" y2="11"/>
+            <circle cx="12" cy="14" r="8"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Detailed Timing</h3>
+          <p class="feature__desc">DNS lookup, TCP handshake, TLS negotiation, TTFB, and body transfer — broken down per request.</p>
+        </div>
+      </div>
+
+      <!-- 3 · In-App Console -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: layout-dashboard -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect width="7" height="9" x="3" y="3" rx="1"/>
+            <rect width="7" height="5" x="14" y="3" rx="1"/>
+            <rect width="7" height="9" x="14" y="12" rx="1"/>
+            <rect width="7" height="5" x="3" y="16" rx="1"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">In-App Console</h3>
+          <p class="feature__desc">A searchable, filterable Jetpack Compose UI that renders the traffic log directly inside your app.</p>
+        </div>
+      </div>
+
+      <!-- 4 · Request Inspector -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: search -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Request Inspector</h3>
+          <p class="feature__desc">Headers, request body, response body with JSON pretty-print, and a visual timing chart — all in one place.</p>
+        </div>
+      </div>
+
+      <!-- 5 · Sensitive Data Redaction -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: shield-check -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Sensitive Data Redaction</h3>
+          <p class="feature__desc">Configurable redaction of headers, query parameters, and JSON fields before any value is stored.</p>
+        </div>
+      </div>
+
+      <!-- 6 · Session Management -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: layers -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>
+            <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/>
+            <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Session Management</h3>
+          <p class="feature__desc">Traffic grouped by app session with device metadata — making cross-session debugging straightforward.</p>
+        </div>
+      </div>
+
+      <!-- 7 · Export -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: upload -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" x2="12" y1="3" y2="15"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Export &amp; Share</h3>
+          <p class="feature__desc">Export logs as JSON, Plain Text, Markdown, or HTML and share via the Android share sheet in one tap.</p>
+        </div>
+      </div>
+
+      <!-- 8 · cURL -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: terminal -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"/>
+            <line x1="12" x2="20" y1="19" y2="19"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">cURL Commands</h3>
+          <p class="feature__desc">Generates a ready-to-run cURL command from any captured request for instant local reproduction.</p>
+        </div>
+      </div>
+
+      <!-- 9 · Persistent Storage -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: database -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+            <path d="M3 12A9 3 0 0 0 21 12"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Persistent Storage</h3>
+          <p class="feature__desc">Room database backend with automatic retention policies and configurable size caps.</p>
+        </div>
+      </div>
+
+      <!-- 10 · Material 3 (spans full row) -->
+      <div class="feature">
+        <div class="feature__icon" aria-hidden="true">
+          <!-- Lucide: moon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+          </svg>
+        </div>
+        <div class="feature__body">
+          <h3 class="feature__name">Material 3 Dark Theme</h3>
+          <p class="feature__desc">Purpose-built dark UI using Material Design 3. Feels native in your development workflow without distracting from your app.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SCREENSHOTS
+============================================================ -->
+<section id="screenshots" class="section section--alt" aria-labelledby="screenshots-heading">
+  <div class="container">
+    <div class="section__header">
+      <span class="section__tag">Interface</span>
+      <h2 class="section__title" id="screenshots-heading">Built for developers</h2>
+      <p class="section__lead">A polished, non-intrusive console that stays out of your way — until you need it.</p>
+    </div>
+
+    <div class="screenshots-grid">
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164622.png" alt="Sample application main screen" loading="lazy" />
+        <div class="screenshot__label">Sample App</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164614.png" alt="HTTP request console list" loading="lazy" />
+        <div class="screenshot__label">Console</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164631.png" alt="Response body viewer with JSON" loading="lazy" />
+        <div class="screenshot__label">Response Body</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164710.png" alt="POST request response detail" loading="lazy" />
+        <div class="screenshot__label">POST Response</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164638.png" alt="Request summary overview" loading="lazy" />
+        <div class="screenshot__label">Summary</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164715.png" alt="POST request summary" loading="lazy" />
+        <div class="screenshot__label">POST Summary</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164721.png" alt="Request body viewer" loading="lazy" />
+        <div class="screenshot__label">Request Body</div>
+      </div>
+      <div class="screenshot">
+        <img src="media/Screenshot_20260325_164737.png" alt="Settings screen" loading="lazy" />
+        <div class="screenshot__label">Settings</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SETUP
+============================================================ -->
+<section id="setup" class="section" aria-labelledby="setup-heading">
+  <div class="container--narrow">
+    <div class="section__header">
+      <span class="section__tag">Integration</span>
+      <h2 class="section__title" id="setup-heading">Up and running in minutes</h2>
+      <p class="section__lead">Four steps to add Kulse to any Android project using OkHttp or Retrofit.</p>
+    </div>
+
+    <div class="steps">
+
+      <!-- Step 01 -->
+      <div class="step">
+        <div class="step__aside">
+          <div class="step__num">01</div>
+          <div class="step__line"></div>
+        </div>
+        <div class="step__content">
+          <h3 class="step__title">Add the dependencies</h3>
+          <p class="step__desc">Add both modules to your app-level <code>build.gradle.kts</code>. You can depend on <code>kulse-core</code> alone if you plan to build a custom UI.</p>
+          <div class="codeblock">
+            <div class="codeblock__header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   style="color:var(--text-3)" aria-hidden="true">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="codeblock__lang">build.gradle.kts</span>
+            </div>
+            <div class="codeblock__body">
+<code><span class="fn">dependencies</span> {
+    <span class="fn">implementation</span>(<span class="str">"com.iosdevc.android:kulse-core:&lt;version&gt;"</span>)
+    <span class="fn">implementation</span>(<span class="str">"com.iosdevc.android:kulse-ui:&lt;version&gt;"</span>)
+}</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 02 -->
+      <div class="step">
+        <div class="step__aside">
+          <div class="step__num">02</div>
+          <div class="step__line"></div>
+        </div>
+        <div class="step__content">
+          <h3 class="step__title">Initialize in your Application class</h3>
+          <p class="step__desc">Call <code>Kulse.install()</code> once at app startup. Pass a <code>KulseConfig</code> to customize behaviour, or omit it to use the defaults.</p>
+          <div class="codeblock">
+            <div class="codeblock__header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   style="color:var(--text-3)" aria-hidden="true">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="codeblock__lang">Application.kt</span>
+            </div>
+            <div class="codeblock__body">
+<code><span class="kw">class</span> <span class="ty">MyApp</span> : <span class="ty">Application</span>() {
+    <span class="kw">override fun</span> <span class="fn">onCreate</span>() {
+        <span class="kw">super</span>.<span class="fn">onCreate</span>()
+        <span class="ty">Kulse</span>.<span class="fn">install</span>(
+            context = <span class="kw">this</span>,
+            config = <span class="ty">KulseConfig</span>(
+                sensitiveHeaders = <span class="fn">setOf</span>(<span class="str">"Authorization"</span>, <span class="str">"Cookie"</span>),
+                excludedHosts    = <span class="fn">setOf</span>(<span class="str">"analytics.example.com"</span>),
+            ),
+        )
+    }
+}</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 03 -->
+      <div class="step">
+        <div class="step__aside">
+          <div class="step__num">03</div>
+          <div class="step__line"></div>
+        </div>
+        <div class="step__content">
+          <h3 class="step__title">Attach the interceptor to OkHttp</h3>
+          <p class="step__desc">Add both the interceptor and the event listener factory to capture full timing data. Works with Retrofit out of the box.</p>
+          <div class="codeblock">
+            <div class="codeblock__header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   style="color:var(--text-3)" aria-hidden="true">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="codeblock__lang">NetworkModule.kt</span>
+            </div>
+            <div class="codeblock__body">
+<code><span class="kw">val</span> client = <span class="ty">OkHttpClient</span>.<span class="ty">Builder</span>()
+    .<span class="fn">addInterceptor</span>(<span class="ty">Kulse</span>.<span class="fn">interceptor</span>())
+    .<span class="fn">eventListenerFactory</span>(<span class="ty">Kulse</span>.<span class="fn">eventListenerFactory</span>())
+    .<span class="fn">build</span>()
+
+<span class="cm">// Works seamlessly with Retrofit</span>
+<span class="kw">val</span> retrofit = <span class="ty">Retrofit</span>.<span class="ty">Builder</span>()
+    .<span class="fn">baseUrl</span>(<span class="str">"https://api.example.com/"</span>)
+    .<span class="fn">client</span>(client)
+    .<span class="fn">build</span>()</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 04 (no trailing line) -->
+      <div class="step">
+        <div class="step__aside">
+          <div class="step__num">04</div>
+        </div>
+        <div class="step__content">
+          <h3 class="step__title">Open the console</h3>
+          <p class="step__desc">Launch the standalone activity from anywhere in your app, or embed the <code>KulseConsole</code> composable inside your own screen.</p>
+          <div class="codeblock">
+            <div class="codeblock__header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   style="color:var(--text-3)" aria-hidden="true">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="codeblock__lang">Kotlin</span>
+            </div>
+            <div class="codeblock__body">
+<code><span class="cm">// As a standalone Activity</span>
+<span class="ty">KulseActivity</span>.<span class="fn">start</span>(context)
+
+<span class="cm">// Or embed the Composable in your own screen</span>
+<span class="fn">KulseConsole</span>()</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     CONFIGURATION
+============================================================ -->
+<section id="config" class="section section--alt" aria-labelledby="config-heading">
+  <div class="container--narrow">
+    <div class="section__header">
+      <span class="section__tag">Reference</span>
+      <h2 class="section__title" id="config-heading">Configuration</h2>
+      <p class="section__lead">Fine-tune storage limits, privacy controls, host filtering, and log verbosity with <code style="font-size:0.9em;color:var(--text);background:var(--surface-raised);border:1px solid var(--border-strong);padding:2px 6px;border-radius:4px">KulseConfig</code>.</p>
+    </div>
+
+    <div class="config-card">
+      <div class="config-card__header">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+             style="color:var(--text-3)" aria-hidden="true">
+          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span class="config-card__title">KulseConfig.kt</span>
+      </div>
+      <div class="config-card__body">
+<code><span class="ty">KulseConfig</span>(
+    <span class="cm">// ── Storage ────────────────────────────────────────────</span>
+    maxStorageSize      = <span class="nm">256L</span> * <span class="nm">1024</span> * <span class="nm">1024</span>,  <span class="cm">// 256 MB</span>
+    maxAge              = <span class="nm">14</span>.days,              <span class="cm">// auto-purge after 14 days</span>
+
+    <span class="cm">// ── Body size limits ───────────────────────────────────</span>
+    maxRequestBodySize  = <span class="nm">1L</span>  * <span class="nm">1024</span> * <span class="nm">1024</span>,  <span class="cm">// 1 MB</span>
+    maxResponseBodySize = <span class="nm">8L</span>  * <span class="nm">1024</span> * <span class="nm">1024</span>,  <span class="cm">// 8 MB</span>
+
+    <span class="cm">// ── Privacy / redaction ────────────────────────────────</span>
+    sensitiveHeaders     = <span class="fn">setOf</span>(<span class="str">"Authorization"</span>, <span class="str">"Cookie"</span>, <span class="str">"Set-Cookie"</span>),
+    sensitiveQueryParams = <span class="fn">setOf</span>(<span class="str">"api_key"</span>, <span class="str">"token"</span>),
+    sensitiveJsonFields  = <span class="fn">setOf</span>(<span class="str">"password"</span>, <span class="str">"ssn"</span>),
+
+    <span class="cm">// ── Host filtering ─────────────────────────────────────</span>
+    excludedHosts = <span class="fn">setOf</span>(<span class="str">"crashlytics.googleapis.com"</span>),
+    includedHosts = <span class="fn">emptySet</span>(),  <span class="cm">// if non-empty, only these hosts are logged</span>
+
+    <span class="cm">// ── Control ────────────────────────────────────────────</span>
+    isEnabled = <span class="kw">true</span>,
+    logLevel  = <span class="ty">LogLevel</span>.DEBUG,
+)</code>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================================================
+     FOOTER
+============================================================ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer__inner">
+      <p class="footer__copy">
+        <strong>Kulse</strong> v1.0.0 &mdash; MIT License &mdash; &copy; 2026 iOSDevC
+      </p>
+      <nav class="footer__links" aria-label="Footer links">
+        <a href="https://github.com/iOSDevC/Kulse"
+           class="footer__link" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/iOSDevC/Kulse/blob/main/LICENSE"
+           class="footer__link" target="_blank" rel="noopener noreferrer">License</a>
+        <a href="https://github.com/iOSDevC/Kulse/issues"
+           class="footer__link" target="_blank" rel="noopener noreferrer">Issues</a>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

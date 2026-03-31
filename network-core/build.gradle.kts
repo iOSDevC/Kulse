@@ -45,7 +45,7 @@ afterEvaluate {
                 pom {
                     name.set("Kulse Core")
                     description.set("Android network logging and debugging library - Core module")
-                    url.set("https://github.com/kean/network-android")
+                    url.set("https://github.com/iOSDevC/Kulse")
 
                     licenses {
                         license {

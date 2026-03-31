@@ -47,7 +47,7 @@ afterEvaluate {
                 pom {
                     name.set("Kulse UI")
                     description.set("Android network logging and debugging library - Compose UI module")
-                    url.set("https://github.com/kean/network-android")
+                    url.set("https://github.com/iOSDevC/Kulse")
 
                     licenses {
                         license {
