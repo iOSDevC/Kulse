@@ -1,5 +1,6 @@
 package com.iosdevc.android.logger
 
+import com.iosdevc.android.logger.db.entity.TransactionTimingsUpdate
 import okhttp3.Call
 import okhttp3.Connection
 import okhttp3.EventListener
@@ -100,9 +101,9 @@ internal class KulseEventListener(
     }
 
     private fun flushTimings(call: Call) {
-        val transactionId = logger.callTransactionMap.remove(call) ?: return
-        logger.updateTransactionTimings(
-            transactionId = transactionId,
+        val transactionId = logger.takePendingTransaction(call) ?: return
+        val timings = TransactionTimingsUpdate(
+            id = 0,
             dnsStart = dnsStartMs,
             dnsEnd = dnsEndMs,
             connectStart = connectStartMs,
@@ -114,6 +115,9 @@ internal class KulseEventListener(
             responseStart = responseStartMs,
             responseEnd = responseEndMs,
         )
+        logger.updateTransaction(transactionId) { dao, id ->
+            dao.updateTimings(timings.copy(id = id))
+        }
     }
 
     class Factory(private val logger: Kulse) : EventListener.Factory {

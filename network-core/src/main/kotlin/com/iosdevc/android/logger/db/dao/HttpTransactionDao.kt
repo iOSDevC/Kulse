@@ -5,6 +5,9 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 import com.iosdevc.android.logger.db.entity.HttpTransactionEntity
+import com.iosdevc.android.logger.db.entity.TransactionCompletionUpdate
+import com.iosdevc.android.logger.db.entity.TransactionResponseUpdate
+import com.iosdevc.android.logger.db.entity.TransactionTimingsUpdate
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -13,8 +16,14 @@ interface HttpTransactionDao {
     @Insert
     suspend fun insert(transaction: HttpTransactionEntity): Long
 
-    @Update
-    suspend fun update(transaction: HttpTransactionEntity)
+    @Update(entity = HttpTransactionEntity::class)
+    suspend fun updateResponse(update: TransactionResponseUpdate)
+
+    @Update(entity = HttpTransactionEntity::class)
+    suspend fun updateCompletion(update: TransactionCompletionUpdate)
+
+    @Update(entity = HttpTransactionEntity::class)
+    suspend fun updateTimings(update: TransactionTimingsUpdate)
 
     @Query("SELECT * FROM http_transactions ORDER BY request_date DESC")
     fun getAllFlow(): Flow<List<HttpTransactionEntity>>
@@ -69,6 +78,9 @@ interface HttpTransactionDao {
 
     @Query("DELETE FROM http_transactions WHERE request_date < :before")
     suspend fun deleteOlderThan(before: Long)
+
+    @Query("DELETE FROM http_transactions WHERE id IN (SELECT id FROM http_transactions ORDER BY id LIMIT :count)")
+    suspend fun deleteOldest(count: Int)
 
     @Query("SELECT COUNT(*) FROM http_transactions")
     suspend fun count(): Int

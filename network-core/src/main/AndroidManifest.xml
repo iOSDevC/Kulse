@@ -3,7 +3,7 @@
 
     <application>
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name="com.iosdevc.android.logger.internal.KulseFileProvider"
             android:authorities="${applicationId}.kulse.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
