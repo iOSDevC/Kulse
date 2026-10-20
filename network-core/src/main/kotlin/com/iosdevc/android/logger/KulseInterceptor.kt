@@ -1,12 +1,19 @@
 package com.iosdevc.android.logger
 
 import com.iosdevc.android.logger.db.entity.HttpTransactionEntity
+import com.iosdevc.android.logger.db.entity.TransactionCompletionUpdate
+import com.iosdevc.android.logger.db.entity.TransactionResponseUpdate
+import com.iosdevc.android.logger.internal.CapturingSource
 import com.iosdevc.android.logger.internal.HeaderSerializer
 import com.iosdevc.android.logger.internal.Redactor
+import com.iosdevc.android.logger.model.TransactionState
+import kotlinx.coroutines.Deferred
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.Buffer
+import okio.buffer
 import java.io.IOException
 
 internal class KulseInterceptor(
@@ -45,94 +52,104 @@ internal class KulseInterceptor(
             state = 0,
         )
 
-        // C1: Fire-and-forget async insert. The DB id is stored in callTransactionMap
-        // when the insert completes, so EventListener can use it later.
-        val call = chain.call()
-        logger.insertTransactionAsync(requestEntity) { dbId ->
-            logger.callTransactionMap[call] = dbId
-        }
+        // C1: Fire-and-forget async insert. Later writes for this transaction wait for its
+        // id on Kulse's write queue, so nothing here blocks on the database.
+        val transactionId = logger.insertTransaction(chain.call(), requestEntity)
 
         val startNanos = System.nanoTime()
         val response: Response
         try {
             response = chain.proceed(request)
         } catch (e: IOException) {
-            val duration = (System.nanoTime() - startNanos) / 1_000_000
-            // Wait briefly for the async insert to provide the ID
-            val transactionId = waitForTransactionId(call)
-            if (transactionId != null) {
-                logger.updateTransaction(
-                    requestEntity.copy(
-                        id = transactionId,
-                        error = e.toString(),
-                        duration = duration,
-                        state = 2,
-                    )
-                )
-            }
-            // C5: Always clean up the map
-            logger.callTransactionMap.remove(call)
+            complete(transactionId, startNanos, error = e)
             throw e
         }
 
-        val duration = (System.nanoTime() - startNanos) / 1_000_000
         val responseRedactedHeaders = Redactor.redactHeaders(response.headers, logger.config.sensitiveHeaders)
-        val responseBodyResult = readResponseBody(response)
-
-        val transactionId = waitForTransactionId(call)
-        if (transactionId != null) {
-            logger.updateTransaction(
-                requestEntity.copy(
-                    id = transactionId,
-                    responseDate = System.currentTimeMillis(),
-                    responseCode = response.code,
-                    responseMessage = response.message,
-                    responseContentType = response.body?.contentType()?.toString(),
-                    responseHeaders = HeaderSerializer.serialize(responseRedactedHeaders),
-                    responseBody = redactBody(responseBodyResult?.first, response.body?.contentType()?.toString()),
-                    responseBodySize = responseBodyResult?.second ?: 0,
-                    isResponseBodyEncoded = isEncoded(response),
-                    protocol = response.protocol.toString(),
-                    tlsVersion = chain.connection()?.handshake()?.tlsVersion?.javaName,
-                    cipherSuite = chain.connection()?.handshake()?.cipherSuite?.javaName,
-                    duration = duration,
-                    isFromCache = response.cacheResponse != null,
-                    state = 1,
-                )
-            )
+        val responseUpdate = TransactionResponseUpdate(
+            id = 0,
+            responseDate = System.currentTimeMillis(),
+            responseCode = response.code,
+            responseMessage = response.message,
+            responseContentType = response.body?.contentType()?.toString(),
+            responseHeaders = HeaderSerializer.serialize(responseRedactedHeaders),
+            isResponseBodyEncoded = isEncoded(response),
+            protocol = response.protocol.toString(),
+            // chain.connection() is always null in application interceptors.
+            tlsVersion = response.handshake?.tlsVersion?.javaName,
+            cipherSuite = response.handshake?.cipherSuite?.javaName,
+            isFromCache = response.cacheResponse != null,
+        )
+        logger.updateTransaction(transactionId) { dao, id ->
+            dao.updateResponse(responseUpdate.copy(id = id))
         }
 
-        // C5: Clean up on success path -- EventListener can still read it
-        // before this runs since flushTimings happens on callEnd which is after intercept returns.
-        // We leave the entry for the EventListener to consume; it will remove it.
-        // If no EventListener is installed, clean up here.
-        if (!logger.hasEventListenerFactory) {
-            logger.callTransactionMap.remove(call)
+        val body = response.body
+        if (body == null || !hasBody(response)) {
+            complete(transactionId, startNanos, error = null)
+            return response
         }
 
-        return response
+        // C2: Capture the body while the app reads it instead of reading it up front, so
+        // streaming responses are not held back. At most maxResponseBodySize bytes are kept.
+        val maxSize = logger.config.maxResponseBodySize
+        val contentType = body.contentType()
+        val capturingSource = CapturingSource(body.source(), maxSize) { captured, totalBytes, error ->
+            complete(transactionId, startNanos, error, totalBytes) {
+                val text = if (totalBytes > maxSize) {
+                    "[Body too large: $totalBytes bytes]"
+                } else {
+                    captured.readString(contentType?.charset(Charsets.UTF_8) ?: Charsets.UTF_8)
+                }
+                redactBody(text, contentType?.toString())
+            }
+        }
+        return response.newBuilder()
+            .body(capturingSource.buffer().asResponseBody(contentType, body.contentLength()))
+            .build()
     }
 
     /**
-     * Wait for the async insert to complete and provide the transaction ID.
-     * Spins briefly since the insert is on Dispatchers.IO and is very fast.
+     * Records the final state of the transaction. [readBody] runs on Kulse's write queue,
+     * so decoding and redacting a large body never delays the thread reading the response.
      */
-    private fun waitForTransactionId(call: Any): Long? {
-        // The insert is async on IO dispatcher. In practice, the network call takes
-        // much longer than a Room insert, so by the time we get here the ID is ready.
-        var attempts = 0
-        while (attempts < 50) { // max ~50ms wait
-            val id = logger.callTransactionMap[call]
-            if (id != null) return id
-            Thread.sleep(1)
-            attempts++
+    private fun complete(
+        transactionId: Deferred<Long>,
+        startNanos: Long,
+        error: IOException?,
+        bodySize: Long = 0,
+        readBody: () -> String? = { null },
+    ) {
+        val duration = (System.nanoTime() - startNanos) / 1_000_000
+        logger.updateTransaction(transactionId) { dao, id ->
+            dao.updateCompletion(
+                TransactionCompletionUpdate(
+                    id = id,
+                    responseBody = readBody(),
+                    responseBodySize = bodySize,
+                    duration = duration,
+                    error = error?.toString(),
+                    state = if (error == null) TransactionState.COMPLETE.value else TransactionState.FAILED.value,
+                )
+            )
         }
-        return null
+    }
+
+    // Same rules as OkHttp's internal promisesBody(): these responses never carry a body.
+    private fun hasBody(response: Response): Boolean {
+        if (response.request.method == "HEAD") return false
+        val code = response.code
+        if (code in 100..199 || code == 204 || code == 304) return false
+        return response.body?.contentLength() != 0L
     }
 
     private fun readRequestBody(request: Request): Pair<String, Long>? {
         val body = request.body ?: return null
         val contentLength = body.contentLength()
+        if (body.isOneShot() || body.isDuplex()) {
+            // Reading these would consume the bytes the request still has to send.
+            return "[Body not captured: one-shot or duplex request body]" to contentLength.coerceAtLeast(0)
+        }
         if (contentLength > logger.config.maxRequestBodySize) {
             return "[Body too large: $contentLength bytes]" to contentLength
         }
@@ -141,25 +158,6 @@ internal class KulseInterceptor(
             body.writeTo(buffer)
             val size = buffer.size
             if (size > logger.config.maxRequestBodySize) {
-                return "[Body too large: $size bytes]" to size
-            }
-            val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
-            buffer.readString(charset) to size
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    // C2: Only buffer up to maxResponseBodySize + 1 to prevent OOM
-    private fun readResponseBody(response: Response): Pair<String, Long>? {
-        val body = response.body ?: return null
-        val maxSize = logger.config.maxResponseBodySize
-        return try {
-            val source = body.source()
-            source.request(maxSize + 1)
-            val buffer = source.buffer.clone()
-            val size = buffer.size
-            if (size > maxSize) {
                 return "[Body too large: $size bytes]" to size
             }
             val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8

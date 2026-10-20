@@ -3,7 +3,9 @@ package com.iosdevc.android.logger
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.iosdevc.android.logger.db.KulseDatabase
+import com.iosdevc.android.logger.db.dao.HttpTransactionDao
 import com.iosdevc.android.logger.db.entity.HttpTransactionEntity
 import com.iosdevc.android.logger.db.entity.LogMessageEntity
 import com.iosdevc.android.logger.db.entity.SessionEntity
@@ -11,10 +13,14 @@ import com.iosdevc.android.logger.internal.RetentionManager
 import com.iosdevc.android.logger.model.HttpTransaction
 import com.iosdevc.android.logger.model.Session
 import com.iosdevc.android.logger.repository.KulseRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -22,10 +28,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.Call
 import okhttp3.Interceptor
 import okhttp3.EventListener
+import java.util.Collections
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
+import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -67,7 +75,28 @@ object Kulse {
      */
     val events: SharedFlow<Event> = _events.asSharedFlow()
 
-    internal val callTransactionMap = ConcurrentHashMap<Any, Long>()
+    // Transaction writes run one at a time, in the order they were queued, so every update
+    // lands after its insert and nobody waits for the database on the network thread.
+    private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    // Pending transaction id of each in-flight call, read by KulseEventListener to attach
+    // timings. Weak keys drop an entry with its call, even if no EventListener is installed.
+    private val pendingTransactions: MutableMap<Call, Deferred<Long>> =
+        Collections.synchronizedMap(WeakHashMap())
+
+    init {
+        scope.launch {
+            for (write in writes) {
+                try {
+                    write()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Database write failed", e)
+                }
+            }
+        }
+    }
 
     /** Active configuration. Reflects what was provided in [install]. */
     val config: KulseConfig get() = _config
@@ -127,9 +156,6 @@ object Kulse {
         scheduleRetention()
     }
 
-    internal var hasEventListenerFactory: Boolean = false
-        private set
-
     /**
      * Creates an OkHttp [Interceptor] that records all HTTP transactions.
      *
@@ -159,10 +185,7 @@ object Kulse {
      * @return [EventListener] factory to assign to the [OkHttpClient.Builder].
      * @see interceptor
      */
-    fun eventListenerFactory(): EventListener.Factory {
-        hasEventListenerFactory = true
-        return KulseEventListener.Factory(this)
-    }
+    fun eventListenerFactory(): EventListener.Factory = KulseEventListener.Factory(this)
 
     /**
      * Records a custom log message associated with the current session.
@@ -192,54 +215,38 @@ object Kulse {
         }
     }
 
-    // C1: Async insert -- no runBlocking on the network thread
-    internal fun insertTransactionAsync(
-        entity: HttpTransactionEntity,
-        onInserted: (Long) -> Unit,
-    ) {
-        scope.launch {
-            val id = database.transactionDao().insert(entity)
+    internal fun enqueueWrite(write: suspend () -> Unit) {
+        writes.trySend(write)
+    }
+
+    // C1: Async insert -- no runBlocking on the network thread. The returned id completes
+    // once the insert has run; writes queued after it can await it without blocking.
+    internal fun insertTransaction(call: Call, entity: HttpTransactionEntity): Deferred<Long> {
+        val transactionId = CompletableDeferred<Long>()
+        pendingTransactions[call] = transactionId
+        enqueueWrite {
+            val id = try {
+                database.transactionDao().insert(entity)
+            } catch (e: Exception) {
+                transactionId.completeExceptionally(e)
+                throw e
+            }
+            transactionId.complete(id)
             _events.tryEmit(Event.TransactionInserted(id))
-            onInserted(id)
         }
+        return transactionId
     }
 
-    internal fun updateTransaction(entity: HttpTransactionEntity) {
-        scope.launch {
-            database.transactionDao().update(entity)
-            _events.tryEmit(Event.TransactionUpdated(entity.id))
-        }
-    }
+    internal fun takePendingTransaction(call: Call): Deferred<Long>? = pendingTransactions.remove(call)
 
-    internal fun updateTransactionTimings(
-        transactionId: Long,
-        dnsStart: Long?,
-        dnsEnd: Long?,
-        connectStart: Long?,
-        connectEnd: Long?,
-        tlsStart: Long?,
-        tlsEnd: Long?,
-        requestStart: Long?,
-        requestEnd: Long?,
-        responseStart: Long?,
-        responseEnd: Long?,
+    internal fun updateTransaction(
+        transactionId: Deferred<Long>,
+        write: suspend (dao: HttpTransactionDao, id: Long) -> Unit,
     ) {
-        scope.launch {
-            val tx = database.transactionDao().getById(transactionId) ?: return@launch
-            database.transactionDao().update(
-                tx.copy(
-                    dnsStart = dnsStart,
-                    dnsEnd = dnsEnd,
-                    connectStart = connectStart,
-                    connectEnd = connectEnd,
-                    tlsStart = tlsStart,
-                    tlsEnd = tlsEnd,
-                    requestStart = requestStart,
-                    requestEnd = requestEnd,
-                    responseStart = responseStart,
-                    responseEnd = responseEnd,
-                )
-            )
+        enqueueWrite {
+            val id = transactionId.await()
+            write(database.transactionDao(), id)
+            _events.tryEmit(Event.TransactionUpdated(id))
         }
     }
 
@@ -278,13 +285,30 @@ object Kulse {
         }
     }
 
+    // Sweeps right away, then every sweepInterval: most sessions are shorter than the interval.
     private fun scheduleRetention() {
         scope.launch {
             while (true) {
-                delay(config.sweepInterval.inWholeMilliseconds)
                 RetentionManager.sweep(database, config)
+                delay(config.sweepInterval.inWholeMilliseconds)
             }
         }
+    }
+
+    /** Points Kulse at [database], bypassing the once-only guard of [install]. */
+    @VisibleForTesting
+    internal fun installForTesting(database: KulseDatabase, config: KulseConfig = KulseConfig()) {
+        _config = config
+        _database = database
+        _repository = KulseRepository(database)
+    }
+
+    /** Suspends until every write queued so far has run. */
+    @VisibleForTesting
+    internal suspend fun awaitWrites() {
+        val done = CompletableDeferred<Unit>()
+        enqueueWrite { done.complete(Unit) }
+        done.await()
     }
 
     /** Events emitted by Kulse when stored transactions change. */
